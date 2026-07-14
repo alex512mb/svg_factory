@@ -1,12 +1,14 @@
 import type { AssetCategory } from "./lib/styleLock";
 import type { AppSettings } from "./lib/settings";
 import { generateAsset as generateAssetCore } from "./lib/generate";
+import { enrichUserRequest } from "./lib/styleLock";
 import { validateSvg } from "./lib/validateSvg";
 
 export type GenerateResponse = {
   filename: string;
   category: AssetCategory;
   svg: string;
+  profileLabel: string | null;
 };
 
 const CATEGORY_LABELS: Record<AssetCategory, string> = {
@@ -24,6 +26,7 @@ export async function generateAsset(
   settings: AppSettings,
   prompt: string,
 ): Promise<GenerateResponse> {
+  const enrichment = enrichUserRequest(prompt);
   let result = await generateAssetCore(settings, prompt);
   let qc = validateSvg(result.svg);
 
@@ -38,10 +41,16 @@ export async function generateAsset(
     );
   }
 
+  const filename =
+    result.filename === "asset.svg" && enrichment.filenameSlug
+      ? `${enrichment.filenameSlug}.svg`
+      : result.filename;
+
   return {
-    filename: result.filename,
-    category: result.category,
+    filename,
+    category: result.category || enrichment.category,
     svg: qc.svg,
+    profileLabel: enrichment.profileLabel,
   };
 }
 

@@ -134,6 +134,11 @@ export default function App() {
                 <span className="meta-item">
                   Тип: {categoryLabel(result.category)}
                 </span>
+                {result.profileLabel && (
+                  <span className="meta-item">
+                    Образ: {result.profileLabel}
+                  </span>
+                )}
                 <span className="meta-item">Файл: {result.filename}</span>
               </div>
               <div

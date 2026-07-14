@@ -1,6 +1,7 @@
 import {
   buildSystemPrompt,
   buildUserPrompt,
+  enrichUserRequest,
   type AssetCategory,
 } from "./styleLock";
 import type { AppSettings } from "./settings";
@@ -129,13 +130,17 @@ async function callChatCompletion(
   useJsonObject = true,
 ): Promise<string> {
   const { url, model, headers } = resolveEndpoint(settings);
+  const enrichment = enrichUserRequest(userPrompt);
 
   const body: Record<string, unknown> = {
     model,
-    temperature: 0.4,
+    temperature: 0.35,
     messages: [
       { role: "system", content: buildSystemPrompt() },
-      { role: "user", content: buildUserPrompt(userPrompt, qcErrors) },
+      {
+        role: "user",
+        content: buildUserPrompt(userPrompt, enrichment, qcErrors),
+      },
     ],
   };
 
