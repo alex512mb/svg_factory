@@ -31,7 +31,8 @@ export const STYLE_LOCK = {
 
 export type AssetCategory = (typeof STYLE_LOCK.categories)[number];
 
-export function buildSystemPrompt(): string {  return `You are a game asset SVG generator for colony-sim / management games.
+export function buildSystemPrompt(): string {
+  return `You are a game asset SVG generator for colony-sim / management games.
 
 STYLE LOCK (always apply, never ask the user about style):
 - Visual references: RimWorld, Prison Architect
@@ -79,6 +80,8 @@ export function buildUserPrompt(
   userPrompt: string,
   enrichment: EnrichedPrompt,
   qcErrors?: string[],
+  previousSvg?: string,
+  reviewIssues?: string[],
 ): string {
   const traitBlock = enrichment.traits.map((t) => `- ${t}`).join("\n");
   const colorBlock = enrichment.colors.join(", ");
@@ -104,11 +107,40 @@ The result must be instantly recognizable as "${enrichment.subject}" in simple c
     base += `\nMatched archetype: ${enrichment.profileLabel}.`;
   }
 
+  const fixBlocks: string[] = [];
+
   if (qcErrors?.length) {
+    fixBlocks.push(
+      ...qcErrors.map(
+        (issue) => `Technical QC issue: ${issue}`,
+      ),
+    );
+  }
+
+  if (reviewIssues?.length) {
+    fixBlocks.push(
+      ...reviewIssues.map(
+        (issue) => `Visual review issue: ${issue}`,
+      ),
+    );
+  }
+
+  if (fixBlocks.length) {
     base += `
 
-Previous SVG failed quality checks. Fix ALL of these issues and return corrected JSON:
-- ${qcErrors.join("\n- ")}`;
+Fix ALL of these problems in the new SVG:
+- ${fixBlocks.join("\n- ")}`;
+  }
+
+  if (previousSvg) {
+    const clipped =
+      previousSvg.length > 6500
+        ? `${previousSvg.slice(0, 6500)}\n<!-- truncated -->`
+        : previousSvg;
+    base += `
+
+Previous attempt (keep what works, fix what failed):
+${clipped}`;
   }
 
   return base;

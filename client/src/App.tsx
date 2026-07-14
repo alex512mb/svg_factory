@@ -1,10 +1,13 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   categoryLabel,
   downloadSvg,
   generateAsset,
-  type GenerateResponse,
+  getSelectedStep,
+  GenerationCancelledError,
+  type GenerationSession,
 } from "./api";
+import HistoryPanel from "./components/HistoryPanel";
 import SettingsPanel from "./components/SettingsPanel";
 import {
   hasConfiguredKey,
@@ -21,9 +24,15 @@ export default function App() {
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<GenerateResponse | null>(null);
+  const [session, setSession] = useState<GenerationSession | null>(null);
+  const [selectedStepId, setSelectedStepId] = useState(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   const keyReady = hasConfiguredKey(settings);
+  const selectedStep = session ? getSelectedStep({
+    ...session,
+    selectedStepId,
+  }) : null;
 
   useEffect(() => {
     if (!settingsSaved) return;
@@ -36,6 +45,10 @@ export default function App() {
     setSettingsSaved(true);
   }
 
+  function handleCancel() {
+    abortRef.current?.abort();
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     const trimmed = prompt.trim();
@@ -46,16 +59,41 @@ export default function App() {
       return;
     }
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     setError(null);
+    setSession(null);
+    setSelectedStepId(0);
 
     try {
-      const data = await generateAsset(settings, trimmed);
-      setResult(data);
+      await generateAsset(settings, trimmed, {
+        signal: controller.signal,
+        onUpdate: (nextSession) => {
+          setSession(nextSession);
+          setSelectedStepId(nextSession.selectedStepId);
+        },
+      });
     } catch (err) {
+      if (err instanceof GenerationCancelledError) {
+        setSession((prev) =>
+          prev
+            ? {
+                ...prev,
+                cancelled: true,
+                finished: true,
+                statusText: "Генерация прервана. Можно выбрать любой готовый шаг.",
+              }
+            : prev,
+        );
+        return;
+      }
       setError(err instanceof Error ? err.message : "Неизвестная ошибка");
     } finally {
       setLoading(false);
+      abortRef.current = null;
     }
   }
 
@@ -68,8 +106,8 @@ export default function App() {
           <p className="brand-mark">Colony Ink</p>
           <h1>2D Content Generator</h1>
           <p className="lede">
-            Короткий запрос — готовый SVG в стиле colony-sim. Стиль уже вшит:
-            объяснять RimWorld или Prison Architect не нужно.
+            Короткий запрос — готовый SVG в стиле colony-sim. Генератор сам
+            проверяет результат и улучшает его при необходимости.
           </p>
         </header>
 
@@ -99,12 +137,15 @@ export default function App() {
             autoComplete="off"
             disabled={loading}
           />
-          <button
-            type="submit"
-            disabled={loading || !prompt.trim() || !keyReady}
-          >
-            {loading ? "Генерация…" : "Сгенерировать"}
-          </button>
+          {loading ? (
+            <button type="button" className="cancel-btn" onClick={handleCancel}>
+              Прервать
+            </button>
+          ) : (
+            <button type="submit" disabled={!prompt.trim() || !keyReady}>
+              Сгенерировать
+            </button>
+          )}
         </form>
 
         <div className="examples">
@@ -121,34 +162,49 @@ export default function App() {
           ))}
         </div>
 
+        {loading && session?.statusText && (
+          <div className="banner info" role="status">
+            {session.statusText}
+          </div>
+        )}
+
         {error && (
           <div className="banner error" role="alert">
             {error}
           </div>
         )}
 
+        <HistoryPanel
+          session={session}
+          selectedStepId={selectedStepId}
+          onSelectStep={setSelectedStepId}
+        />
+
         <section className="preview-panel" aria-live="polite">
-          {result ? (
+          {selectedStep ? (
             <>
               <div className="preview-meta">
                 <span className="meta-item">
-                  Тип: {categoryLabel(result.category)}
+                  Тип: {categoryLabel(selectedStep.category)}
                 </span>
-                {result.profileLabel && (
+                {session?.profileLabel && (
                   <span className="meta-item">
-                    Образ: {result.profileLabel}
+                    Образ: {session.profileLabel}
                   </span>
                 )}
-                <span className="meta-item">Файл: {result.filename}</span>
+                <span className="meta-item">Файл: {selectedStep.filename}</span>
+                <span className="meta-item">{selectedStep.label}</span>
               </div>
               <div
                 className="preview-stage"
-                dangerouslySetInnerHTML={{ __html: result.svg }}
+                dangerouslySetInnerHTML={{ __html: selectedStep.svg }}
               />
               <button
                 type="button"
                 className="download"
-                onClick={() => downloadSvg(result.filename, result.svg)}
+                onClick={() =>
+                  downloadSvg(selectedStep.filename, selectedStep.svg)
+                }
               >
                 Скачать SVG
               </button>
@@ -156,7 +212,7 @@ export default function App() {
           ) : (
             <div className="preview-empty">
               {loading
-                ? "Собираем силуэт…"
+                ? "Собираем и проверяем силуэт…"
                 : "Превью появится здесь после генерации"}
             </div>
           )}

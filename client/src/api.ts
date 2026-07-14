@@ -1,14 +1,22 @@
 import type { AssetCategory } from "./lib/styleLock";
 import type { AppSettings } from "./lib/settings";
-import { generateAsset as generateAssetCore } from "./lib/generate";
-import { enrichUserRequest } from "./lib/styleLock";
-import { validateSvg } from "./lib/validateSvg";
+import {
+  generateWithRefinement,
+  GenerationCancelledError,
+  type GenerationSession,
+  type GenerationStep,
+  type RefinementCallbacks,
+} from "./lib/refinementPipeline";
+
+export { GenerationCancelledError };
+export type { GenerationSession, GenerationStep };
 
 export type GenerateResponse = {
   filename: string;
   category: AssetCategory;
   svg: string;
   profileLabel: string | null;
+  session: GenerationSession;
 };
 
 const CATEGORY_LABELS: Record<AssetCategory, string> = {
@@ -22,35 +30,32 @@ export function categoryLabel(category: AssetCategory): string {
   return CATEGORY_LABELS[category] ?? category;
 }
 
+export function getSelectedStep(session: GenerationSession): GenerationStep | null {
+  return (
+    session.steps.find((step) => step.id === session.selectedStepId) ??
+    session.steps[session.steps.length - 1] ??
+    null
+  );
+}
+
 export async function generateAsset(
   settings: AppSettings,
   prompt: string,
+  callbacks: RefinementCallbacks,
 ): Promise<GenerateResponse> {
-  const enrichment = enrichUserRequest(prompt);
-  let result = await generateAssetCore(settings, prompt);
-  let qc = validateSvg(result.svg);
+  const session = await generateWithRefinement(settings, prompt, callbacks);
+  const selected = getSelectedStep(session);
 
-  if (!qc.ok) {
-    result = await generateAssetCore(settings, prompt, qc.errors);
-    qc = validateSvg(result.svg);
+  if (!selected) {
+    throw new Error("Генерация не дала результата.");
   }
-
-  if (!qc.ok) {
-    throw new Error(
-      `Генерация не прошла проверку качества.\n${qc.errors.join("\n")}`,
-    );
-  }
-
-  const filename =
-    result.filename === "asset.svg" && enrichment.filenameSlug
-      ? `${enrichment.filenameSlug}.svg`
-      : result.filename;
 
   return {
-    filename,
-    category: result.category || enrichment.category,
-    svg: qc.svg,
-    profileLabel: enrichment.profileLabel,
+    filename: selected.filename,
+    category: selected.category,
+    svg: selected.svg,
+    profileLabel: session.profileLabel,
+    session,
   };
 }
 
