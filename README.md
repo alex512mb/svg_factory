@@ -23,16 +23,22 @@ npm run dev
 ## GitHub Pages
 
 1. Загрузите репозиторий на GitHub.
-2. **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-3. Запушьте в ветку `main` или `master` — workflow `.github/workflows/deploy-pages.yml` соберёт и опубликует сайт.
+2. **Settings → Pages → Build and deployment → Source: GitHub Actions** (не «Deploy from a branch»).
+3. Запушьте в ветку `main` или `master` — workflow соберёт `dist/` и опубликует его.
 
-Сайт будет доступен по адресу:
+Сайт: `https://<username>.github.io/<repo-name>/`
 
-```
-https://<username>.github.io/<repo-name>/
-```
+### Если вместо приложения показывается README
 
-`base: './'` в Vite уже настроен — путь не зависит от имени репозитория.
+Это значит, GitHub отдаёт **исходники репозитория**, а не собранный `dist/`.
+
+**Исправление:**
+1. **Settings → Pages → Source** → выберите **GitHub Actions**
+2. Убедитесь, что **не** выбрано «Deploy from a branch / main / (root)»
+3. **Actions** → **Deploy to GitHub Pages** → **Run workflow**
+4. Откройте сайт с `/` в конце: `https://alex512mb.github.io/svg_factory/`
+
+`index.html` в папке `client/` — это нормально для исходников. На опубликованном сайте после сборки он лежит в корне автоматически.
 
 ## Настройки API
 

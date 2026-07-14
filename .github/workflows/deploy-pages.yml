@@ -20,14 +20,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/configure-pages@v5
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      - run: npm ci
-      - run: npm run build
-      - run: touch dist/.nojekyll
+      - name: Install and build
+        env:
+          # GitHub project pages live at /repo-name/
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+        run: |
+          npm ci
+          npm run build
+          test -f dist/index.html
+          touch dist/.nojekyll
+          echo "Built files:"
+          ls -la dist
 
       - uses: actions/upload-pages-artifact@v3
         with:
